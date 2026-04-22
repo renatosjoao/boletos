@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <title>Boletos</title>
+
+    <!-- Bootstrap -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+
+<body class="bg-light">
+
+<div class="container mt-5">
+
+    <h2 class="mb-4 text-center">📄 Gerenciador de Boletos</h2>
+
+    <!-- Upload -->
+    <div class="card p-3 mb-4 shadow-sm">
+        <h5>Upload de Boleto</h5>
+        <div class="d-flex gap-2">
+            <input type="file" id="file" class="form-control">
+            <button class="btn btn-primary" onclick="upload()">Enviar</button>
+        </div>
+    </div>
+
+    <!-- Tabela -->
+    <div class="card p-3 shadow-sm">
+        <h5 class="mb-3">Lista de Boletos</h5>
+
+        <div class="table-responsive">
+            <table class="table table-striped table-hover align-middle">
+                <thead class="table-dark">
+                    <tr>
+                        <th>ID</th>
+                        <th>Linha Digitável</th>
+                        <th>Valor</th>
+                        <th>Documento</th>
+                        <th>Vencimento</th>
+                        <th>Beneficiário</th>
+                        <th>Ações</th>
+                    </tr>
+                </thead>
+                <tbody id="tabela"></tbody>
+            </table>
+        </div>
+    </div>
+
+</div>
+
+<script>
+
+async function upload() {
+    const fileInput = document.getElementById("file");
+
+    if (!fileInput.files.length) {
+        alert("Selecione um arquivo!");
+        return;
+    }
+
+    const formData = new FormData();
+    formData.append("file", fileInput.files[0]);
+
+    await fetch("http://localhost:8000/upload", {
+        method: "POST",
+        body: formData
+    });
+
+    load();
+}
+
+async function load() {
+    const res = await fetch("http://localhost:8000/boletos");
+    const data = await res.json();
+
+    const tabela = document.getElementById("tabela");
+    tabela.innerHTML = "";
+    
+    data.sort((a, b) => {
+        return new Date(a.data_de_vencimento) - new Date(b.data_de_vencimento);
+    
+    });
+    
+    data.forEach(b => {
+        tabela.innerHTML += `
+            <tr>
+                <td>${b.id}</td>
+
+                <td class="editavel" id="linha_${b.id}">${b.linha_digitavel}</td>
+                <td class="editavel" id="valor_${b.id}">${b.valor}</td>
+                <td class="editavel" id="doc_${b.id}">${formatarDataBR(b.data_do_documento)}</td>
+                <td class="editavel" id="venc_${b.id}">${formatarDataBR(b.data_de_vencimento)}</td>
+                <td class="editavel" id="benef_${b.id}">${b.beneficiario}</td>
+
+                <td>
+                    <button class="btn btn-sm btn-warning" onclick="editar(${b.id})">Editar</button>
+                    <button class="btn btn-sm btn-success d-none" id="save_${b.id}" onclick="salvar(${b.id})">Salvar</button>
+                    <button class="btn btn-sm btn-secondary d-none" id="cancel_${b.id}" onclick="cancelar(${b.id})">Cancelar</button>
+                    <button class="btn btn-sm btn-danger" onclick="deletar(${b.id})">Excluir</button>
+                </td>
+            </tr>
+        `;
+    });
+}
+
+function editar(id) {
+    const campos = ["linha", "valor", "doc", "venc", "benef"];
+
+    window[`backup_${id}`] = campos.map(c =>
+        document.getElementById(`${c}_${id}`).innerText
+    );
+
+    campos.forEach(c => {
+        const el = document.getElementById(`${c}_${id}`);
+        el.contentEditable = true;
+        el.classList.add("table-warning");
+    });
+
+    toggleButtons(id, true);
+}
+
+function cancelar(id) {
+    const campos = ["linha", "valor", "doc", "venc", "benef"];
+    const backup = window[`backup_${id}`];
+
+    campos.forEach((c, i) => {
+        const el = document.getElementById(`${c}_${id}`);
+        el.innerText = backup[i];
+        el.contentEditable = false;
+        el.classList.remove("table-warning");
+    });
+
+    toggleButtons(id, false);
+}
+
+async function salvar(id) {
+    const data = {
+        linha_digitavel: document.getElementById(`linha_${id}`).innerText.trim(),
+        valor: document.getElementById(`valor_${id}`).innerText.trim(),
+        data_do_documento: document.getElementById(`doc_${id}`).innerText.trim(),
+        data_de_vencimento: document.getElementById(`venc_${id}`).innerText.trim(),
+        beneficiario: document.getElementById(`benef_${id}`).innerText.trim()
+    };
+
+    await fetch(`http://localhost:8000/boletos/${id}`, {
+        method: "PUT",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify(data)
+    });
+
+    load();
+}
+
+function formatarDataBR(dataISO) {
+    if (!dataISO || dataISO === "N/A") return dataISO;
+
+    const [ano, mes, dia] = dataISO.split("-");
+    return `${dia}/${mes}/${ano}`;
+}
+
+async function deletar(id) {
+    if (!confirm("Deseja excluir?")) return;
+
+    await fetch(`http://localhost:8000/boletos/${id}`, {
+        method: "DELETE"
+    });
+
+    load();
+}
+
+function toggleButtons(id, editing) {
+    document.getElementById(`save_${id}`).classList.toggle("d-none", !editing);
+    document.getElementById(`cancel_${id}`).classList.toggle("d-none", !editing);
+}
+
+window.onload = load;
+
+</script>
+
+</body>
+</html>
